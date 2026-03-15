@@ -128,44 +128,36 @@ const CHAR_UUID = '0000fff3-0000-1000-8000-00805f9b34fb';
 async function connectCube() {
         try {
             audioCtx.resume();
-            statusDiv.innerText = "[正在繞過系統鎖定...]";
+            statusDiv.innerText = "[正在執行權限穿透...]";
 
+            // 只宣告 csTimer 會用的那幾組，不要雜亂
             const device = await navigator.bluetooth.requestDevice({ 
                 acceptAllDevices: true,
                 optionalServices: [
-                    '0000fee3-0000-1000-8000-00805f9b34fb', // 超級威龍專用門牌
-                    '0000fff0-0000-1000-8000-00805f9b34fb'  // 通用備用門牌
+                    '0000fee3-0000-1000-8000-00805f9b34fb', // Moyu V2 AI 核心 ID
+                    '0000fff0-0000-1000-8000-00805f9b34fb'
                 ]
             });
             
             const server = await device.gatt.connect();
-            statusDiv.innerText = "[已握手] 正在強行掃描服務...";
+            statusDiv.innerText = "[已連線] 正在強制同步數據路徑...";
 
-            // ⚠️ 關鍵：強制等待 2.5 秒，這對於 Mac 系統非常重要
-            await new Promise(r => setTimeout(r, 2500));
+            // 強制等待系統刷新快取
+            await new Promise(r => setTimeout(r, 2000));
 
-            // 直接精準打擊：嘗試獲取 fee3 服務
-            let service;
-            try {
-                service = await server.getPrimaryService('0000fee3-0000-1000-8000-00805f9b34fb');
-            } catch (e) {
-                // 如果失敗才嘗試自動掃描
-                const services = await server.getPrimaryServices();
-                service = services[0];
-            }
-
-            if (!service) throw new Error("魔方拒絕顯示服務，請重啟魔方");
-
+            // 直接針對門牌強行開啟，不進行自動偵測
+            const service = await server.getPrimaryService('0000fee3-0000-1000-8000-00805f9b34fb');
             const chars = await service.getCharacteristics();
-            // 尋找具有 Notify 功能的出口
+            
+            // 尋找通訊窗口：這步最關鍵，Moyu 的出口通常具備 Notify 功能
             const characteristic = chars.find(c => c.properties.notify);
 
-            if (!characteristic) throw new Error("找不到數據窗口");
+            if (!characteristic) throw new Error("找到門但找不到出口，請轉動魔方");
 
             await characteristic.startNotifications();
             characteristic.addEventListener('characteristicvaluechanged', handleCubeData);
             
-            statusDiv.innerText = "[連線成功] V2 AI 準備就緒！";
+            statusDiv.innerText = "[完全連線] 歡迎回來，V2 AI！";
             statusDiv.style.color = "#0f0";
             document.getElementById("btn-connect").style.display = "none";
         } catch (err) { 
@@ -173,7 +165,6 @@ async function connectCube() {
             console.error(err);
         }
     }
-    
     async function trySecondProtocol() {
         try {
             const device = await navigator.bluetooth.requestDevice({ 
