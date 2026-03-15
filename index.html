@@ -124,47 +124,43 @@ const CHAR_UUID = '0000fff3-0000-1000-8000-00805f9b34fb';
         }
         dictDisplay.innerHTML = html;
     }
-    renderDictionary();async function connectCube() {
+    renderDictionary();
+async function connectCube() {
         try {
             audioCtx.resume();
-            statusDiv.innerText = "[正在嘗試 Moyu 專用握手協議...]";
+            statusDiv.innerText = "[正在繞過系統鎖定...]";
 
-            // 1. 強制宣告 Moyu V2 AI 常用的所有服務
             const device = await navigator.bluetooth.requestDevice({ 
                 acceptAllDevices: true,
                 optionalServices: [
-                    '0000fee3-0000-1000-8000-00805f9b34fb', // Moyu AI 常用
-                    '0000a0b0-0000-1000-8000-00805f9b34fb', // 舊版
-                    '0000fff0-0000-1000-8000-00805f9b34fb', // 通用
-                    '00001812-0000-1000-8000-00805f9b34fb'  // HID
+                    '0000fee3-0000-1000-8000-00805f9b34fb', // 超級威龍專用門牌
+                    '0000fff0-0000-1000-8000-00805f9b34fb'  // 通用備用門牌
                 ]
             });
             
             const server = await device.gatt.connect();
-            statusDiv.innerText = "[已握手] 正在解開加密鎖...";
+            statusDiv.innerText = "[已握手] 正在強行掃描服務...";
 
-            // 2. 遍歷服務，尋找 Moyu 的加密通訊口 (通常是 fee3)
-            let characteristic;
-            const services = await server.getPrimaryServices();
-            
-            for (const s of services) {
-                const chars = await s.getCharacteristics();
-                // 尋找具有 Write + Notify 功能的窗口（這是加密魔方的特徵）
-                const found = chars.find(c => c.properties.notify && (c.properties.write || c.properties.writeWithoutResponse));
-                if (found) {
-                    characteristic = found;
-                    break;
-                }
+            // ⚠️ 關鍵：強制等待 2.5 秒，這對於 Mac 系統非常重要
+            await new Promise(r => setTimeout(r, 2500));
+
+            // 直接精準打擊：嘗試獲取 fee3 服務
+            let service;
+            try {
+                service = await server.getPrimaryService('0000fee3-0000-1000-8000-00805f9b34fb');
+            } catch (e) {
+                // 如果失敗才嘗試自動掃描
+                const services = await server.getPrimaryServices();
+                service = services[0];
             }
 
-            if (!characteristic) throw new Error("找不到通訊窗口，請轉動魔方");
+            if (!service) throw new Error("魔方拒絕顯示服務，請重啟魔方");
 
-            // 3. 重要：某些 Moyu 魔方需要先寫入一串「解鎖密碼」
-            try {
-                // 嘗試發送 Moyu 的激活指令 (如果有需要的話)
-                const wakeUpCode = new Uint8Array([0x01]); 
-                await characteristic.writeValue(wakeUpCode);
-            } catch (e) { console.log("無需解鎖碼"); }
+            const chars = await service.getCharacteristics();
+            // 尋找具有 Notify 功能的出口
+            const characteristic = chars.find(c => c.properties.notify);
+
+            if (!characteristic) throw new Error("找不到數據窗口");
 
             await characteristic.startNotifications();
             characteristic.addEventListener('characteristicvaluechanged', handleCubeData);
@@ -177,6 +173,7 @@ const CHAR_UUID = '0000fff3-0000-1000-8000-00805f9b34fb';
             console.error(err);
         }
     }
+    
     async function trySecondProtocol() {
         try {
             const device = await navigator.bluetooth.requestDevice({ 
