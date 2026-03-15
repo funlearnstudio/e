@@ -153,8 +153,10 @@
             statusDiv.innerText = "[連線成功] 實體控制權移交。";
             statusDiv.style.color = "#0f0";
             document.getElementById("btn-connect").style.display = "none";
-        } catch (err) { statusDiv.innerText = "[錯誤] 藍牙連線遭拒，請確認設備權限。"; }
-    }
+        } catch (err) { 
+    statusDiv.innerText = "[錯誤細節] " + err.name + ": " + err.message; 
+    console.error(err);
+}
 
     function handleCubeData(e) {
         const val = new Uint8Array(e.target.value.buffer);
