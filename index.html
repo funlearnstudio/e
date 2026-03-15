@@ -128,12 +128,10 @@ const CHAR_UUID = '0000fff3-0000-1000-8000-00805f9b34fb';
 async function connectCube() {
         try {
             audioCtx.resume();
-            statusDiv.innerText = "[偵測模式開啟...]";
+            statusDiv.innerText = "[正在繞過系統鎖定...]";
 
-            // 1. 這次不設任何過濾，列出附近所有藍牙裝置
             const device = await navigator.bluetooth.requestDevice({ 
                 acceptAllDevices: true,
-                // 我們不限制連線哪個服務，但列出所有可能的魔方服務作為備選
                 optionalServices: [
                     '0000a0b0-0000-1000-8000-00805f9b34fb',
                     '0000fff0-0000-1000-8000-00805f9b34fb',
@@ -143,38 +141,37 @@ async function connectCube() {
             });
             
             const server = await device.gatt.connect();
-            statusDiv.innerText = "[已握手] 正在掃描隱藏門牌...";
+            statusDiv.innerText = "[已握手] 等待系統解鎖服務...";
 
-            // 2. 核心魔法：自動抓取這台裝置「身上所有」開放的服務
+            // 關鍵動作：延遲 1.5 秒再讀取服務，給 MacOS 緩衝時間
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
             const services = await server.getPrimaryServices();
-            console.log("偵測到這台魔方的所有 UUID：", services.map(s => s.uuid));
-
-            let characteristic = null;
-
-            // 3. 逐一進入每個服務，尋找會「通知 (Notify)」轉動數據的窗口
-            for (const service of services) {
-                try {
-                    const chars = await service.getCharacteristics();
-                    const target = chars.find(c => c.properties.notify);
-                    if (target) {
-                        characteristic = target;
-                        console.log("成功找到數據窗口！UUID:", service.uuid);
-                        break;
-                    }
-                } catch (e) { continue; }
+            
+            if (services.length === 0) {
+                // 如果還是空的，嘗試最後一搏：直接強攻 A0B0 服務
+                const service = await server.getPrimaryService('0000a0b0-0000-1000-8000-00805f9b34fb');
+                const chars = await service.getCharacteristics();
+                var characteristic = chars.find(c => c.properties.notify);
+            } else {
+                for (const s of services) {
+                    const chars = await s.getCharacteristics();
+                    var characteristic = chars.find(c => c.properties.notify);
+                    if (characteristic) break;
+                }
             }
 
-            if (!characteristic) throw new Error("裝置內找不到可用的數據傳輸通道");
+            if (!characteristic) throw new Error("裝置通訊門徑仍被封鎖");
 
             await characteristic.startNotifications();
             characteristic.addEventListener('characteristicvaluechanged', handleCubeData);
             
-            statusDiv.innerText = "[連線成功] 協議已自動匹配！";
+            statusDiv.innerText = "[連線成功] 突破封鎖！";
             statusDiv.style.color = "#0f0";
             document.getElementById("btn-connect").style.display = "none";
         } catch (err) { 
-            statusDiv.innerText = "[連線失敗] " + err.message;
-            console.error("Debug 資訊：", err);
+            statusDiv.innerText = "[錯誤] " + err.message + " (請嘗試重啟藍牙)";
+            console.error(err);
         }
     }
     function handleCubeData(e) {
