@@ -142,7 +142,8 @@
         try {
             audioCtx.resume();
             statusDiv.innerText = "[通訊建立中...]";
-            const device = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: 'MoYu' }], optionalServices: [SERVICE_UUID] });
+            // 替換成這行（解開限制）：
+            const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [SERVICE_UUID] });
             const server = await device.gatt.connect();
             const service = await server.getPrimaryService(SERVICE_UUID);
             const char = await service.getCharacteristic(CHAR_UUID);
