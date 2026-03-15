@@ -128,50 +128,59 @@ const CHAR_UUID = '0000fff3-0000-1000-8000-00805f9b34fb';
 async function connectCube() {
         try {
             audioCtx.resume();
-            statusDiv.innerText = "[正在繞過系統鎖定...]";
+            statusDiv.innerText = "[正在嘗試暴力破譯...]";
 
+            // 1. 直接指定最可能的服務 UUID，不讓系統有過濾的空間
             const device = await navigator.bluetooth.requestDevice({ 
-                acceptAllDevices: true,
-                optionalServices: [
-                    '0000a0b0-0000-1000-8000-00805f9b34fb',
-                    '0000fff0-0000-1000-8000-00805f9b34fb',
-                    '0000fee3-0000-1000-8000-00805f9b34fb',
-                    '00001812-0000-1000-8000-00805f9b34fb'
-                ]
+                filters: [{ services: ['0000a0b0-0000-1000-8000-00805f9b34fb'] }],
+                optionalServices: ['0000a0b0-0000-1000-8000-00805f9b34fb']
             });
             
             const server = await device.gatt.connect();
-            statusDiv.innerText = "[已握手] 等待系統解鎖服務...";
-
-            // 關鍵動作：延遲 1.5 秒再讀取服務，給 MacOS 緩衝時間
-            await new Promise(resolve => setTimeout(resolve, 1500));
-
-            const services = await server.getPrimaryServices();
             
-            if (services.length === 0) {
-                // 如果還是空的，嘗試最後一搏：直接強攻 A0B0 服務
-                const service = await server.getPrimaryService('0000a0b0-0000-1000-8000-00805f9b34fb');
-                const chars = await service.getCharacteristics();
-                var characteristic = chars.find(c => c.properties.notify);
-            } else {
-                for (const s of services) {
-                    const chars = await s.getCharacteristics();
-                    var characteristic = chars.find(c => c.properties.notify);
-                    if (characteristic) break;
-                }
-            }
+            // 2. 不要用 getPrimaryServices() (複數)，直接強行獲取指定的門 (單數)
+            const service = await server.getPrimaryService('0000a0b0-0000-1000-8000-00805f9b34fb');
+            
+            // 3. 獲取所有窗口並找到會通知的
+            const chars = await service.getCharacteristics();
+            const characteristic = chars.find(c => c.properties.notify);
 
-            if (!characteristic) throw new Error("裝置通訊門徑仍被封鎖");
+            if (!characteristic) throw new Error("找到門了，但窗口是關閉的");
 
             await characteristic.startNotifications();
             characteristic.addEventListener('characteristicvaluechanged', handleCubeData);
             
-            statusDiv.innerText = "[連線成功] 突破封鎖！";
+            statusDiv.innerText = "[連線成功] 終於抓到你了！";
             statusDiv.style.color = "#0f0";
             document.getElementById("btn-connect").style.display = "none";
         } catch (err) { 
-            statusDiv.innerText = "[錯誤] " + err.message + " (請嘗試重啟藍牙)";
-            console.error(err);
+            // 如果失敗，我們自動換下一組 UUID 再試一次
+            if (err.name === "NotFoundError") {
+                statusDiv.innerText = "[切換協議] 嘗試第二方案...";
+                trySecondProtocol();
+            } else {
+                statusDiv.innerText = "[連線失敗] " + err.message;
+            }
+        }
+    }
+
+    async function trySecondProtocol() {
+        try {
+            const device = await navigator.bluetooth.requestDevice({ 
+                filters: [{ services: ['0000fff0-0000-1000-8000-00805f9b34fb'] }],
+                optionalServices: ['0000fff0-0000-1000-8000-00805f9b34fb']
+            });
+            const server = await device.gatt.connect();
+            const service = await server.getPrimaryService('0000fff0-0000-1000-8000-00805f9b34fb');
+            const chars = await service.getCharacteristics();
+            const characteristic = chars.find(c => c.properties.notify);
+            await characteristic.startNotifications();
+            characteristic.addEventListener('characteristicvaluechanged', handleCubeData);
+            statusDiv.innerText = "[連線成功] 第二方案奏效！";
+            statusDiv.style.color = "#0f0";
+            document.getElementById("btn-connect").style.display = "none";
+        } catch (err) {
+            statusDiv.innerText = "[終極錯誤] 找不到相符協議，請轉動魔方重試";
         }
     }
     function handleCubeData(e) {
