@@ -40,7 +40,6 @@
         <button onclick="connectCube()" id="btn-connect">>>> 初始化藍牙連線</button>
         <div id="status" style="color:#f00; font-weight:bold; margin-bottom: 10px; text-align:center;">[系統離線] 等待連線...</div>
         <div class="cube-wrapper"><twisty-player id="cube3d" puzzle="3x3x3" control-panel="none" background="none"></twisty-player></div>
-        <div style="font-size: 12px; color: #aaa;">提示：若無法連線藍牙，可直接滑鼠拖曳上方魔方進行測試。</div>
     </div>
 
     <div class="panel panel-large">
@@ -54,8 +53,7 @@
 
     <div class="panel">
         <div style="color:var(--accent); font-weight:bold; margin-bottom:10px;">📋 系統指令對照表</div>
-        <div class="dictionary-panel" id="dict-display">
-            </div>
+        <div class="dictionary-panel" id="dict-display"></div>
     </div>
 </div>
 
@@ -76,7 +74,6 @@
     const CHAR_UUID = '0000a0b1-0000-1000-8000-00805f9b34fb';
     const moveMap = { 1:"U", 2:"U'", 3:"U2", 4:"D", 5:"D'", 6:"D2", 7:"L", 8:"L'", 9:"L2", 10:"R", 11:"R'", 12:"R2", 13:"F", 14:"F'", 15:"F2", 16:"B", 17:"B'", 18:"B2" };
 
-    // 音效合成器
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const notes = { 'U': 261.63, 'D': 293.66, 'L': 329.63, 'R': 349.23, 'F': 392.00, 'B': 440.00 }; 
 
@@ -95,14 +92,10 @@
         }
     }
 
-    // --- 完整系統字典 ---
     const DICTIONARY = {
-        // 系統控制
         "F2 B2 U2 D2": "清除畫面 (CLEAR)", "L2 R2 U2 D2": "大小寫切換 (CAPS)", 
         "L2 B2 L2 B2": "電子琴模式 (MUSIC)", "B2 F2 L2 R2": "語音朗讀 (SPEAK)",
-        // 標點與控制鍵
         "U2": "[空白鍵]", "L' U' L U": "[倒退鍵 (Back)]", "R U R' U'": ",", "R' F R F'": ".",
-        // 完整 A-Z
         "R' F R' B2 R F' R' B2 R2": "A", "R2 B2 R F R' B2 R F' R": "B", "R U' R U R U R U' R' U' R2": "C",
         "R2 U R U R' U' R' U' R' U R'": "D", "R U' R' D R U R' D' R U R' D R U' R' D'": "E",
         "R' U' F' R U R' U' R' F R2 U' R' U'": "F", "R2 U R' U R' U' R U' R2 D U' R' U R D'": "G",
@@ -117,33 +110,32 @@
         "F R U R' U' F' U F R U R' U' F'": "X", "R U R2 U' R' F R U R U' F'": "Y", "F R U R' U' R U R' U' F'": "Z"
     };
 
-    // 依照長度排序避免短公式誤判
     const sortedAlgos = Object.keys(DICTIONARY).sort((a, b) => b.length - a.length);
 
-    // --- 自動生成右側的 UI 指令表 ---
     function renderDictionary() {
         let html = '<div class="dict-section-title">🔧 系統控制與標點</div>';
         for (let [moves, char] of Object.entries(DICTIONARY)) {
-            if (char.length > 1) { // 標記為指令或標點
-                html += `<div class="dict-item"><span class="dict-key">${char}</span><span class="dict-val">${moves}</span></div>`;
-            }
+            if (char.length > 1) html += `<div class="dict-item"><span class="dict-key">${char}</span><span class="dict-val">${moves}</span></div>`;
         }
         html += '<div class="dict-section-title">🔠 字母 A-Z </div>';
         for (let [moves, char] of Object.entries(DICTIONARY)) {
-            if (char.length === 1 && char.match(/[A-Z]/i)) {
-                html += `<div class="dict-item"><span class="dict-key">${char}</span><span class="dict-val">${moves}</span></div>`;
-            }
+            if (char.length === 1 && char.match(/[A-Z]/i)) html += `<div class="dict-item"><span class="dict-key">${char}</span><span class="dict-val">${moves}</span></div>`;
         }
         dictDisplay.innerHTML = html;
     }
-    renderDictionary(); // 網頁載入時立刻繪製
+    renderDictionary();
 
     async function connectCube() {
         try {
             audioCtx.resume();
             statusDiv.innerText = "[通訊建立中...]";
-            // 替換成這行（解開限制）：
-            const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [SERVICE_UUID] });
+            
+            // 關鍵修改：接受所有裝置，讓魔方無所遁形
+            const device = await navigator.bluetooth.requestDevice({ 
+                acceptAllDevices: true, 
+                optionalServices: [SERVICE_UUID] 
+            });
+            
             const server = await device.gatt.connect();
             const service = await server.getPrimaryService(SERVICE_UUID);
             const char = await service.getCharacteristic(CHAR_UUID);
@@ -154,9 +146,11 @@
             statusDiv.style.color = "#0f0";
             document.getElementById("btn-connect").style.display = "none";
         } catch (err) { 
-    statusDiv.innerText = "[錯誤細節] " + err.name + ": " + err.message; 
-    console.error(err);
-}
+            // 關鍵修改：印出真實的錯誤訊息
+            statusDiv.innerText = "[錯誤細節] " + err.name + ": " + err.message; 
+            console.error(err);
+        }
+    }
 
     function handleCubeData(e) {
         const val = new Uint8Array(e.target.value.buffer);
@@ -164,7 +158,7 @@
         if (move) {
             if (isMusicMode) playSound('music', move);
             moveBuffer.push(move);
-            cube3d.alg = moveBuffer.join(" ");
+            if(cube3d && cube3d.alg !== undefined) cube3d.alg = moveBuffer.join(" ");
             bufferDisplay.innerText = ">> " + moveBuffer.join(" ");
             clearTimeout(evalTimer);
             evalTimer = setTimeout(evaluateBuffer, 700);
@@ -197,9 +191,10 @@
         if (typed) {
             moveBuffer = bufferStr.length > 0 ? bufferStr.split(" ") : [];
             bufferDisplay.innerText = moveBuffer.length ? ">> " + moveBuffer.join(" ") : ">> [待命中]";
-            setTimeout(() => { if(moveBuffer.length === 0) cube3d.alg = ""; }, 400);
+            setTimeout(() => { if(moveBuffer.length === 0 && cube3d && cube3d.alg !== undefined) cube3d.alg = ""; }, 400);
         } else if (moveBuffer.length > 25) {
-            moveBuffer = []; bufferDisplay.innerText = ">> [緩衝區溢位] 已清除軌跡"; cube3d.alg = "";
+            moveBuffer = []; bufferDisplay.innerText = ">> [緩衝區溢位] 已清除軌跡"; 
+            if(cube3d && cube3d.alg !== undefined) cube3d.alg = "";
         }
     }
 
