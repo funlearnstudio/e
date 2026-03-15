@@ -128,24 +128,20 @@ const CHAR_UUID = '0000fff3-0000-1000-8000-00805f9b34fb';
 async function connectCube() {
         try {
             audioCtx.resume();
-            statusDiv.innerText = "[正在執行 csTimer 破解協議...]";
+            statusDiv.innerText = "[搜尋中...] 請確保已轉動魔方";
 
-            // 1. 同時請求 fee3 (Moyu AI 核心) 和 fff0 (備用)
+            // 換成這個「全掃描」模式
             const device = await navigator.bluetooth.requestDevice({ 
-                filters: [
-                    { namePrefix: "Moyu" },
-                    { namePrefix: "AiCube" },
-                    { services: ['0000fee3-0000-1000-8000-00805f9b34fb'] }
-                ],
+                acceptAllDevices: true, 
                 optionalServices: [
                     '0000fee3-0000-1000-8000-00805f9b34fb',
-                    '0000fff0-0000-1000-8000-00805f9b34fb'
+                    '0000fff0-0000-1000-8000-00805f9b34fb',
+                    '0000a0b0-0000-1000-8000-00805f9b34fb'
                 ]
             });
             
             const server = await device.gatt.connect();
-            statusDiv.innerText = "[握手成功] 正在解鎖服務路徑...";
-
+            statusDiv.innerText = "[已連線] 正在解鎖服務...";
             // 2. 關鍵：給予 1 秒緩衝，然後主動進攻 fee3 服務
             await new Promise(r => setTimeout(r, 1000));
             
