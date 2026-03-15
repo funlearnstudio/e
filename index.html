@@ -128,43 +128,53 @@ const CHAR_UUID = '0000fff3-0000-1000-8000-00805f9b34fb';
 async function connectCube() {
         try {
             audioCtx.resume();
-            statusDiv.innerText = "[正在強行破門...]";
+            statusDiv.innerText = "[偵測模式開啟...]";
 
-            // 1. 這次我們直接指定常見的所有魔方 UUID，不讓它有漏掉的機會
+            // 1. 這次不設任何過濾，列出附近所有藍牙裝置
             const device = await navigator.bluetooth.requestDevice({ 
-                filters: [
-                    { services: ['0000a0b0-0000-1000-8000-00805f9b34fb'] },
-                    { services: ['0000fff0-0000-1000-8000-00805f9b34fb'] }
-                ],
-                optionalServices: ['0000a0b0-0000-1000-8000-00805f9b34fb', '0000fff0-0000-1000-8000-00805f9b34fb']
+                acceptAllDevices: true,
+                // 我們不限制連線哪個服務，但列出所有可能的魔方服務作為備選
+                optionalServices: [
+                    '0000a0b0-0000-1000-8000-00805f9b34fb',
+                    '0000fff0-0000-1000-8000-00805f9b34fb',
+                    '0000fee3-0000-1000-8000-00805f9b34fb',
+                    '00001812-0000-1000-8000-00805f9b34fb'
+                ]
             });
             
             const server = await device.gatt.connect();
-            statusDiv.innerText = "[已進入] 正在提取數據窗口...";
+            statusDiv.innerText = "[已握手] 正在掃描隱藏門牌...";
 
-            // 2. 嘗試獲取服務
-            let service;
-            try {
-                service = await server.getPrimaryService('0000a0b0-0000-1000-8000-00805f9b34fb');
-            } catch (e) {
-                service = await server.getPrimaryService('0000fff0-0000-1000-8000-00805f9b34fb');
+            // 2. 核心魔法：自動抓取這台裝置「身上所有」開放的服務
+            const services = await server.getPrimaryServices();
+            console.log("偵測到這台魔方的所有 UUID：", services.map(s => s.uuid));
+
+            let characteristic = null;
+
+            // 3. 逐一進入每個服務，尋找會「通知 (Notify)」轉動數據的窗口
+            for (const service of services) {
+                try {
+                    const chars = await service.getCharacteristics();
+                    const target = chars.find(c => c.properties.notify);
+                    if (target) {
+                        characteristic = target;
+                        console.log("成功找到數據窗口！UUID:", service.uuid);
+                        break;
+                    }
+                } catch (e) { continue; }
             }
 
-            // 3. 獲取特徵值 (如果是 a0b0 服務，特徵值通常是 a0b1)
-            const chars = await service.getCharacteristics();
-            const characteristic = chars.find(c => c.properties.notify);
-
-            if (!characteristic) throw new Error("找不到 Notify 窗口");
+            if (!characteristic) throw new Error("裝置內找不到可用的數據傳輸通道");
 
             await characteristic.startNotifications();
             characteristic.addEventListener('characteristicvaluechanged', handleCubeData);
             
-            statusDiv.innerText = "[連線成功] 請開始打字！";
+            statusDiv.innerText = "[連線成功] 協議已自動匹配！";
             statusDiv.style.color = "#0f0";
             document.getElementById("btn-connect").style.display = "none";
         } catch (err) { 
-            statusDiv.innerText = "[錯誤] " + err.name + ": " + err.message;
-            console.error(err);
+            statusDiv.innerText = "[連線失敗] " + err.message;
+            console.error("Debug 資訊：", err);
         }
     }
     function handleCubeData(e) {
