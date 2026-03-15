@@ -70,8 +70,9 @@
     let isMusicMode = false;
     
     // 藍牙 UUID
-    const SERVICE_UUID = '0000a0b0-0000-1000-8000-00805f9b34fb';
-    const CHAR_UUID = '0000a0b1-0000-1000-8000-00805f9b34fb';
+   // 替換成這兩行：
+const SERVICE_UUID = '0000fff0-0000-1000-8000-00805f9b34fb';
+const CHAR_UUID = '0000fff3-0000-1000-8000-00805f9b34fb';
     const moveMap = { 1:"U", 2:"U'", 3:"U2", 4:"D", 5:"D'", 6:"D2", 7:"L", 8:"L'", 9:"L2", 10:"R", 11:"R'", 12:"R2", 13:"F", 14:"F'", 15:"F2", 16:"B", 17:"B'", 18:"B2" };
 
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
