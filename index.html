@@ -128,51 +128,63 @@ const CHAR_UUID = '0000fff3-0000-1000-8000-00805f9b34fb';
 async function connectCube() {
         try {
             audioCtx.resume();
-            statusDiv.innerText = "[通訊成功] 正在偵測專用協議...";
+            statusDiv.innerText = "[強制授權中...]";
 
-            // 1. 這次不設限，但我們要開啟所有權限來讀取 Services
+            // 1. 強制宣告所有可能的服務，這會繞過 Mac 的初步過濾
             const device = await navigator.bluetooth.requestDevice({ 
                 acceptAllDevices: true,
-                // 把所有可能的服務區段都列出來，強迫 Mac 讀取
                 optionalServices: [
                     '0000a0b0-0000-1000-8000-00805f9b34fb',
                     '0000fff0-0000-1000-8000-00805f9b34fb',
                     '0000fee3-0000-1000-8000-00805f9b34fb',
                     '00001812-0000-1000-8000-00805f9b34fb',
-                    '00001530-1212-efde-1523-785feabcd123' // 某些新晶片用的特殊區段
+                    0xa0b0, 0xfff0, 0xfee3 // 同時使用簡短格式
                 ]
             });
             
+            statusDiv.innerText = "[已握手] 正在強行讀取服務...";
             const server = await device.gatt.connect();
-            
-            // 2. 獲取所有主要服務並印在 Console 給我們看
-            const services = await server.getPrimaryServices();
-            console.log("偵測到此魔方的 UUID 清單：", services.map(s => s.uuid));
-            
-            let characteristic = null;
 
-            // 3. 自動適配：遍歷所有服務，尋找帶有「Notify」功能的窗口
-            for (const service of services) {
-                const chars = await service.getCharacteristics();
-                const found = chars.find(c => c.properties.notify || c.properties.indicate);
-                if (found) {
-                    characteristic = found;
-                    console.log("已成功適配數據窗口：", service.uuid);
-                    break;
-                }
+            // 2. 延遲 1 秒，給魔方內部晶片一點反應時間
+            await new Promise(r => setTimeout(r, 1000));
+
+            // 3. 嘗試所有已知的魔方「房門」
+            let service;
+            const targetUUIDs = [
+                '0000a0b0-0000-1000-8000-00805f9b34fb',
+                '0000fff0-0000-1000-8000-00805f9b34fb',
+                '0000fee3-0000-1000-8000-00805f9b34fb'
+            ];
+
+            for (const uuid of targetUUIDs) {
+                try {
+                    service = await server.getPrimaryService(uuid);
+                    if (service) break;
+                } catch (e) { continue; }
             }
 
-            if (!characteristic) throw new Error("找不到可用的通訊協議，請轉動魔方");
+            if (!service) {
+                // 如果強攻失敗，最後一次嘗試列出所有服務 (即使是隱藏的)
+                const all = await server.getPrimaryServices();
+                if (all.length > 0) service = all[0];
+            }
+
+            if (!service) throw new Error("魔方拒絕掃描服務，請重新啟動魔方電源");
+
+            const chars = await service.getCharacteristics();
+            const characteristic = chars.find(c => c.properties.notify || c.properties.indicate);
+
+            if (!characteristic) throw new Error("找不到數據出口");
 
             await characteristic.startNotifications();
             characteristic.addEventListener('characteristicvaluechanged', handleCubeData);
             
-            statusDiv.innerText = "[完全連線] 歡迎使用 V2 AI 鍵盤！";
+            statusDiv.innerText = "[連線成功] 這次真的抓到了！";
             statusDiv.style.color = "#0f0";
             document.getElementById("btn-connect").style.display = "none";
         } catch (err) { 
-            statusDiv.innerText = "[偵測失敗] " + err.message;
-            console.error("詳細 Debug 資訊：", err);
+            statusDiv.innerText = "[錯誤] " + err.message;
+            console.error(err);
         }
     }
     async function trySecondProtocol() {
