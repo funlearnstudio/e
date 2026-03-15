@@ -128,65 +128,65 @@ const CHAR_UUID = '0000fff3-0000-1000-8000-00805f9b34fb';
 async function connectCube() {
         try {
             audioCtx.resume();
-            statusDiv.innerText = "[強制授權中...]";
+            statusDiv.innerText = "[正在強行讀取加密服務...]";
 
-            // 1. 強制宣告所有可能的服務，這會繞過 Mac 的初步過濾
             const device = await navigator.bluetooth.requestDevice({ 
                 acceptAllDevices: true,
                 optionalServices: [
                     '0000a0b0-0000-1000-8000-00805f9b34fb',
                     '0000fff0-0000-1000-8000-00805f9b34fb',
                     '0000fee3-0000-1000-8000-00805f9b34fb',
-                    '00001812-0000-1000-8000-00805f9b34fb',
-                    0xa0b0, 0xfff0, 0xfee3 // 同時使用簡短格式
+                    '00001812-0000-1000-8000-00805f9b34fb'
                 ]
             });
             
-            statusDiv.innerText = "[已握手] 正在強行讀取服務...";
             const server = await device.gatt.connect();
+            
+            // 關鍵修改 1：給予更長的等待時間，讓 Mac 與魔方完成底層配對
+            await new Promise(r => setTimeout(r, 2000));
 
-            // 2. 延遲 1 秒，給魔方內部晶片一點反應時間
-            await new Promise(r => setTimeout(r, 1000));
+            // 關鍵修改 2：嘗試獲取所有主要服務，並捕捉任何可能的錯誤
+            let services;
+            try {
+                services = await server.getPrimaryServices();
+            } catch (e) {
+                // 如果集體獲取失敗，嘗試一個一個單獨強攻
+                const backupUUIDs = ['0000a0b0-0000-1000-8000-00805f9b34fb', '0000fff0-0000-1000-8000-00805f9b34fb'];
+                for (let u of backupUUIDs) {
+                    try {
+                        let s = await server.getPrimaryService(u);
+                        if (s) { services = [s]; break; }
+                    } catch (err) { continue; }
+                }
+            }
 
-            // 3. 嘗試所有已知的魔方「房門」
-            let service;
-            const targetUUIDs = [
-                '0000a0b0-0000-1000-8000-00805f9b34fb',
-                '0000fff0-0000-1000-8000-00805f9b34fb',
-                '0000fee3-0000-1000-8000-00805f9b34fb'
-            ];
+            if (!services || services.length === 0) {
+                throw new Error("魔方已連線但拒絕顯示功能，請嘗試「瘋狂轉動」並重新連線");
+            }
 
-            for (const uuid of targetUUIDs) {
+            let characteristic = null;
+            for (const s of services) {
                 try {
-                    service = await server.getPrimaryService(uuid);
-                    if (service) break;
+                    const chars = await s.getCharacteristics();
+                    characteristic = chars.find(c => c.properties.notify || c.properties.indicate);
+                    if (characteristic) break;
                 } catch (e) { continue; }
             }
 
-            if (!service) {
-                // 如果強攻失敗，最後一次嘗試列出所有服務 (即使是隱藏的)
-                const all = await server.getPrimaryServices();
-                if (all.length > 0) service = all[0];
-            }
-
-            if (!service) throw new Error("魔方拒絕掃描服務，請重新啟動魔方電源");
-
-            const chars = await service.getCharacteristics();
-            const characteristic = chars.find(c => c.properties.notify || c.properties.indicate);
-
-            if (!characteristic) throw new Error("找不到數據出口");
+            if (!characteristic) throw new Error("找不到數據窗口，魔方可能被其他 App 佔用");
 
             await characteristic.startNotifications();
             characteristic.addEventListener('characteristicvaluechanged', handleCubeData);
             
-            statusDiv.innerText = "[連線成功] 這次真的抓到了！";
+            statusDiv.innerText = "[連線成功] 協議已解鎖！";
             statusDiv.style.color = "#0f0";
             document.getElementById("btn-connect").style.display = "none";
         } catch (err) { 
-            statusDiv.innerText = "[錯誤] " + err.message;
-            console.error(err);
+            statusDiv.innerText = "[失敗] " + err.message;
+            console.error("DEBUG:", err);
         }
     }
+    
     async function trySecondProtocol() {
         try {
             const device = await navigator.bluetooth.requestDevice({ 
