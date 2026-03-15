@@ -128,44 +128,53 @@ const CHAR_UUID = '0000fff3-0000-1000-8000-00805f9b34fb';
 async function connectCube() {
         try {
             audioCtx.resume();
-            statusDiv.innerText = "[正在嘗試暴力破譯...]";
+            statusDiv.innerText = "[通訊成功] 正在偵測專用協議...";
 
-           const device = await navigator.bluetooth.requestDevice({ 
-    acceptAllDevices: true, 
-    optionalServices: [
-        '0000a0b0-0000-1000-8000-00805f9b34fb',
-        '0000fff0-0000-1000-8000-00805f9b34fb'
-    ] 
-});
+            // 1. 這次不設限，但我們要開啟所有權限來讀取 Services
+            const device = await navigator.bluetooth.requestDevice({ 
+                acceptAllDevices: true,
+                // 把所有可能的服務區段都列出來，強迫 Mac 讀取
+                optionalServices: [
+                    '0000a0b0-0000-1000-8000-00805f9b34fb',
+                    '0000fff0-0000-1000-8000-00805f9b34fb',
+                    '0000fee3-0000-1000-8000-00805f9b34fb',
+                    '00001812-0000-1000-8000-00805f9b34fb',
+                    '00001530-1212-efde-1523-785feabcd123' // 某些新晶片用的特殊區段
+                ]
+            });
             
             const server = await device.gatt.connect();
             
-            // 2. 不要用 getPrimaryServices() (複數)，直接強行獲取指定的門 (單數)
-            const service = await server.getPrimaryService('0000a0b0-0000-1000-8000-00805f9b34fb');
+            // 2. 獲取所有主要服務並印在 Console 給我們看
+            const services = await server.getPrimaryServices();
+            console.log("偵測到此魔方的 UUID 清單：", services.map(s => s.uuid));
             
-            // 3. 獲取所有窗口並找到會通知的
-            const chars = await service.getCharacteristics();
-            const characteristic = chars.find(c => c.properties.notify);
+            let characteristic = null;
 
-            if (!characteristic) throw new Error("找到門了，但窗口是關閉的");
+            // 3. 自動適配：遍歷所有服務，尋找帶有「Notify」功能的窗口
+            for (const service of services) {
+                const chars = await service.getCharacteristics();
+                const found = chars.find(c => c.properties.notify || c.properties.indicate);
+                if (found) {
+                    characteristic = found;
+                    console.log("已成功適配數據窗口：", service.uuid);
+                    break;
+                }
+            }
+
+            if (!characteristic) throw new Error("找不到可用的通訊協議，請轉動魔方");
 
             await characteristic.startNotifications();
             characteristic.addEventListener('characteristicvaluechanged', handleCubeData);
             
-            statusDiv.innerText = "[連線成功] 終於抓到你了！";
+            statusDiv.innerText = "[完全連線] 歡迎使用 V2 AI 鍵盤！";
             statusDiv.style.color = "#0f0";
             document.getElementById("btn-connect").style.display = "none";
         } catch (err) { 
-            // 如果失敗，我們自動換下一組 UUID 再試一次
-            if (err.name === "NotFoundError") {
-                statusDiv.innerText = "[切換協議] 嘗試第二方案...";
-                trySecondProtocol();
-            } else {
-                statusDiv.innerText = "[連線失敗] " + err.message;
-            }
+            statusDiv.innerText = "[偵測失敗] " + err.message;
+            console.error("詳細 Debug 資訊：", err);
         }
     }
-
     async function trySecondProtocol() {
         try {
             const device = await navigator.bluetooth.requestDevice({ 
