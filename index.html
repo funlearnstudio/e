@@ -130,11 +130,13 @@ async function connectCube() {
             audioCtx.resume();
             statusDiv.innerText = "[正在嘗試暴力破譯...]";
 
-            // 1. 直接指定最可能的服務 UUID，不讓系統有過濾的空間
-            const device = await navigator.bluetooth.requestDevice({ 
-                filters: [{ services: ['0000a0b0-0000-1000-8000-00805f9b34fb'] }],
-                optionalServices: ['0000a0b0-0000-1000-8000-00805f9b34fb']
-            });
+           const device = await navigator.bluetooth.requestDevice({ 
+    acceptAllDevices: true, 
+    optionalServices: [
+        '0000a0b0-0000-1000-8000-00805f9b34fb',
+        '0000fff0-0000-1000-8000-00805f9b34fb'
+    ] 
+});
             
             const server = await device.gatt.connect();
             
